@@ -176,6 +176,13 @@
 
   .cell.owned-done { opacity: 0.85; }
 
+  /* 被占领的小棋盘：整体背景染成占领方颜色 */
+  .cell.sub-owned-x { background: rgba(90, 167, 255, 0.28); }
+  .cell.sub-owned-o { background: rgba(255, 122, 122, 0.28); }
+  /* 被占领小盘内的棋子文字加深，保证可读性 */
+  .cell.sub-owned-x.x { color: #2f6fd6; }
+  .cell.sub-owned-o.o { color: #d84f4f; }
+
   /* 小棋盘整体高亮（强制引导区域） */
   .cell.in-target { background: #31405c; }
   .cell.in-target:hover { background: #3a4d6e; }
@@ -752,7 +759,7 @@
         const el = cells[r][c];
         const v = board[r][c];
         el.textContent = '';
-        el.classList.remove('x', 'o', 'sealed', 'owned-done', 'in-target', 'big-win', 'last-move');
+        el.classList.remove('x', 'o', 'sealed', 'owned-done', 'in-target', 'big-win', 'last-move', 'sub-owned-x', 'sub-owned-o');
 
         if (v) {
           el.textContent = v;
@@ -774,6 +781,20 @@
     // 最近一手高亮
     if (lastMove) {
       cells[lastMove.r][lastMove.c].classList.add('last-move');
+    }
+
+    // 被占领的小棋盘：整体染成占领方颜色
+    for (let sr = 0; sr < SUB; sr++) {
+      for (let sc = 0; sc < SUB; sc++) {
+        const owner = subOwner[sr][sc];
+        if (!owner) continue;
+        const cls = (owner === 'X') ? 'sub-owned-x' : 'sub-owned-o';
+        for (let r = sr * SUB; r < sr * SUB + SUB; r++) {
+          for (let c = sc * SUB; c < sc * SUB + SUB; c++) {
+            cells[r][c].classList.add(cls);
+          }
+        }
+      }
     }
 
     // 强制落子区域高亮
