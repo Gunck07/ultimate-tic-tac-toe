@@ -1,0 +1,910 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>平衡性改良版超级井字棋</title>
+<style>
+  :root {
+    --bg: #1a1d24;
+    --panel: #232833;
+    --line: #3a4152;
+    --line-thick: #6b7280;
+    --text: #e8eaf0;
+    --text-dim: #9aa3b5;
+    --x-color: #5aa7ff;
+    --o-color: #ff7a7a;
+    --seal-bg: #3a3528;
+    --seal-border: #8a7a3c;
+    --seal-text: #c9b766;
+    --active-bg: rgba(90, 167, 255, 0.14);
+    --win-bg: rgba(76, 217, 100, 0.18);
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    min-height: 100vh;
+    background: var(--bg);
+    color: var(--text);
+    font-family: "Segoe UI", "Microsoft YaHei", -apple-system, sans-serif;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+    gap: 18px;
+  }
+
+  h1 {
+    font-size: 22px;
+    font-weight: 700;
+    letter-spacing: 1px;
+  }
+  h1 .sub {
+    font-size: 13px;
+    font-weight: 400;
+    color: var(--text-dim);
+    display: block;
+    margin-top: 4px;
+  }
+
+  /* 模式选择 + 控制按钮行 */
+  .controls {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+    justify-content: center;
+    align-items: center;
+  }
+
+  .mode-group {
+    display: flex;
+    gap: 6px;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 5px;
+  }
+  .mode-btn {
+    background: transparent;
+    color: var(--text-dim);
+    border: none;
+    border-radius: 7px;
+    padding: 8px 14px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    letter-spacing: 0;
+    transition: background 0.15s ease, color 0.15s ease;
+  }
+  .mode-btn:hover { background: #2f3545; color: var(--text); }
+  .mode-btn.active {
+    background: #3b82f6;
+    color: #fff;
+  }
+
+  /* 状态面板 */
+  .status-panel {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+    justify-content: center;
+    align-items: center;
+  }
+  .card {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 10px 16px;
+    text-align: center;
+    min-width: 110px;
+  }
+  .card .label {
+    font-size: 12px;
+    color: var(--text-dim);
+    margin-bottom: 4px;
+  }
+  .card .value {
+    font-size: 18px;
+    font-weight: 700;
+  }
+  .turn-x .value { color: var(--x-color); }
+  .turn-o .value { color: var(--o-color); }
+
+  /* 棋盘容器 */
+  .board-wrap {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    padding: 14px;
+  }
+
+  #board {
+    display: grid;
+    grid-template-columns: repeat(9, 1fr);
+    grid-template-rows: repeat(9, 1fr);
+    width: min(80vw, 560px);
+    height: min(80vw, 560px);
+    gap: 2px;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+
+  .cell {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #2b3040;
+    cursor: pointer;
+    font-size: clamp(14px, 3.2vw, 26px);
+    font-weight: 700;
+    transition: background 0.12s ease, transform 0.08s ease;
+  }
+  .cell:hover { background: #363d52; }
+
+  .cell { --t: var(--line); --r: var(--line); --b: var(--line); --l: var(--line); }
+  .cell {
+    border-top: var(--t);
+    border-right: var(--r);
+    border-bottom: var(--b);
+    border-left: var(--l);
+  }
+
+  .cell.x { color: var(--x-color); }
+  .cell.o { color: var(--o-color); }
+
+  /* 最近一手落子标记 */
+  .cell.last-move {
+    box-shadow: inset 0 0 0 2px #f6c453;
+  }
+
+  /* 中心封印格 */
+  .cell.sealed {
+    background: var(--seal-bg);
+    border: 2px solid var(--seal-border);
+    color: var(--seal-text);
+    font-size: clamp(10px, 2.4vw, 14px);
+    cursor: not-allowed;
+  }
+  .cell.sealed:hover { background: var(--seal-bg); }
+  .cell.sealed .seal-label {
+    font-weight: 700;
+    letter-spacing: 1px;
+  }
+
+  .cell.owned-done { opacity: 0.85; }
+
+  /* 小棋盘整体高亮（强制引导区域） */
+  .cell.in-target { background: #31405c; }
+  .cell.in-target:hover { background: #3a4d6e; }
+
+  /* 大棋盘获胜高亮 */
+  .cell.big-win { background: #22402a; }
+
+  /* 按钮 */
+  button {
+    background: #3b82f6;
+    color: #fff;
+    border: none;
+    border-radius: 10px;
+    padding: 10px 22px;
+    font-size: 15px;
+    font-weight: 600;
+    cursor: pointer;
+    letter-spacing: 1px;
+    transition: background 0.15s ease, transform 0.08s ease;
+  }
+  button:hover { background: #2f6fe0; }
+  button:active { transform: scale(0.97); }
+  button:disabled {
+    background: #3a4152;
+    color: #6b7280;
+    cursor: not-allowed;
+  }
+  button:disabled:hover { background: #3a4152; }
+  button:disabled:active { transform: none; }
+
+  .footer {
+    font-size: 12px;
+    color: var(--text-dim);
+    max-width: 560px;
+    text-align: center;
+    line-height: 1.7;
+  }
+</style>
+</head>
+<body>
+  <h1>
+    平衡性改良版超级井字棋
+    <span class="sub">Ultimate Tic-Tac-Toe · Balanced Edition</span>
+  </h1>
+
+  <!-- 模式选择 -->
+  <div class="controls">
+    <div class="mode-group" id="modeGroup">
+      <button class="mode-btn active" data-mode="pvp">双人对战</button>
+      <button class="mode-btn" data-mode="ai-easy">人机 · 低级</button>
+      <button class="mode-btn" data-mode="ai-hard">人机 · 高级</button>
+    </div>
+    <button id="undoBtn">悔棋</button>
+    <button id="resetBtn">重新开始</button>
+  </div>
+
+  <!-- 状态面板 -->
+  <div class="status-panel">
+    <div class="card" id="turnCard">
+      <div class="label">当前回合</div>
+      <div class="value turn-x" id="turnValue">X</div>
+    </div>
+    <div class="card">
+      <div class="label">强制落子区域</div>
+      <div class="value" id="targetValue">—</div>
+    </div>
+    <div class="card">
+      <div class="label">比分 · X</div>
+      <div class="value turn-x" id="scoreX">0</div>
+    </div>
+    <div class="card">
+      <div class="label">比分 · O</div>
+      <div class="value turn-o" id="scoreO">0</div>
+    </div>
+  </div>
+
+  <div class="board-wrap">
+    <div id="board"></div>
+  </div>
+
+  <div class="footer">
+    规则：你的落子位置决定对手下一步的小棋盘。中心格「封印」常态不可落子，
+    只有获得自由步、或小盘仅剩中心格时方可解禁。悔棋最多回退两步。
+  </div>
+
+<script>
+(function () {
+  "use strict";
+
+  /* ================= 常量 ================= */
+  const SIZE = 9;
+  const SUB = 3;
+  const CENTER = 4;
+
+  /* ================= 游戏状态 ================= */
+  let board = [];
+  let subOwner = [];
+  let subFull = [];
+  let current = 'X';
+  let forcedSub = null;
+  let freeMove = false;
+  let firstMoveDone = false;
+  let gameOver = false;
+  let bigWinner = null;
+  let bigWinLine = [];
+
+  // 游戏模式：'pvp' | 'ai-easy' | 'ai-hard'
+  let mode = 'pvp';
+  // 人类玩家固定执 X，AI 执 O
+  const HUMAN = 'X';
+  const AI = 'O';
+
+  // 悔棋历史栈：每次落子前快照完整状态
+  let history = [];
+  const MAX_UNDO = 2; // 最多回退两步
+
+  // AI 思考中标志（防止连点）
+  let aiThinking = false;
+  // 最近一手落子坐标（用于高亮）
+  let lastMove = null;
+
+  /* ================= DOM 引用 ================= */
+  const boardEl = document.getElementById('board');
+  const turnValue = document.getElementById('turnValue');
+  const turnCard = document.getElementById('turnCard');
+  const targetValue = document.getElementById('targetValue');
+  const scoreX = document.getElementById('scoreX');
+  const scoreO = document.getElementById('scoreO');
+  const undoBtn = document.getElementById('undoBtn');
+  const modeGroup = document.getElementById('modeGroup');
+
+  const cells = [];
+
+  /* ================= 初始化 ================= */
+  function initState() {
+    board = Array.from({ length: SIZE }, () => Array(SIZE).fill(null));
+    subOwner = Array.from({ length: SUB }, () => Array(SUB).fill(null));
+    subFull = Array.from({ length: SUB }, () => Array(SUB).fill(false));
+    current = 'X';
+    forcedSub = { r: Math.floor(CENTER / SUB), c: Math.floor(CENTER / SUB) };
+    freeMove = false;
+    firstMoveDone = false;
+    gameOver = false;
+    bigWinner = null;
+    bigWinLine = [];
+    history = [];
+    aiThinking = false;
+    lastMove = null;
+  }
+
+  function buildBoard() {
+    boardEl.innerHTML = '';
+    for (let r = 0; r < SIZE; r++) {
+      cells[r] = [];
+      for (let c = 0; c < SIZE; c++) {
+        const div = document.createElement('div');
+        div.className = 'cell';
+        div.dataset.r = r;
+        div.dataset.c = c;
+        div.addEventListener('click', () => onCellClick(r, c));
+        boardEl.appendChild(div);
+        cells[r][c] = div;
+      }
+    }
+    applyBorders();
+  }
+
+  function applyBorders() {
+    const thick = '2px solid var(--line-thick)';
+    const thin = '1px solid var(--line)';
+    for (let r = 0; r < SIZE; r++) {
+      for (let c = 0; c < SIZE; c++) {
+        const el = cells[r][c];
+        const subR = r % SUB, subC = c % SUB;
+        el.style.setProperty('--t', subR === 0 ? thick : thin);
+        el.style.setProperty('--l', subC === 0 ? thick : thin);
+        el.style.setProperty('--b', subR === SUB - 1 ? thick : thin);
+        el.style.setProperty('--r', subC === SUB - 1 ? thick : thin);
+      }
+    }
+  }
+
+  /* ================= 工具函数 ================= */
+  function isCenter(r, c) { return r === CENTER && c === CENTER; }
+
+  function isSubFull(sr, sc) {
+    for (let r = sr * SUB; r < sr * SUB + SUB; r++) {
+      for (let c = sc * SUB; c < sc * SUB + SUB; c++) {
+        if (board[r][c] === null) return false;
+      }
+    }
+    return true;
+  }
+
+  function checkSubWin(sr, sc, p) {
+    const cellsArr = [];
+    for (let r = sr * SUB; r < sr * SUB + SUB; r++) {
+      for (let c = sc * SUB; c < sc * SUB + SUB; c++) {
+        cellsArr.push({ r, c, v: board[r][c] });
+      }
+    }
+    const lines = [
+      [0,1,2],[3,4,5],[6,7,8],
+      [0,3,6],[1,4,7],[2,5,8],
+      [0,4,8],[2,4,6]
+    ];
+    for (const line of lines) {
+      if (line.every(i => cellsArr[i].v === p)) {
+        return line.map(i => ({ r: cellsArr[i].r, c: cellsArr[i].c }));
+      }
+    }
+    return null;
+  }
+
+  function checkBigWin() {
+    const arr = [];
+    for (let sr = 0; sr < SUB; sr++) {
+      for (let sc = 0; sc < SUB; sc++) {
+        arr.push({ sr, sc, v: subOwner[sr][sc] });
+      }
+    }
+    const lines = [
+      [0,1,2],[3,4,5],[6,7,8],
+      [0,3,6],[1,4,7],[2,5,8],
+      [0,4,8],[2,4,6]
+    ];
+    for (const line of lines) {
+      const first = arr[line[0]].v;
+      if (first && line.every(i => arr[i].v === first)) {
+        return { winner: first, line: line.map(i => ({ sr: arr[i].sr, sc: arr[i].sc })) };
+      }
+    }
+    return null;
+  }
+
+  function countSubs() {
+    let x = 0, o = 0;
+    for (let sr = 0; sr < SUB; sr++) {
+      for (let sc = 0; sc < SUB; sc++) {
+        if (subOwner[sr][sc] === 'X') x++;
+        else if (subOwner[sr][sc] === 'O') o++;
+      }
+    }
+    return { x, o };
+  }
+
+  function allSubsEnded() {
+    for (let sr = 0; sr < SUB; sr++) {
+      for (let sc = 0; sc < SUB; sc++) {
+        if (subOwner[sr][sc] === null && !subFull[sr][sc]) return false;
+      }
+    }
+    return true;
+  }
+
+  // 判断某个落子位置在当前状态是否合法（不含先手限制，供 AI 用）
+  function isLegalMove(r, c) {
+    if (gameOver) return false;
+    if (board[r][c] !== null) return false;
+
+    const clickedSr = Math.floor(r / SUB), clickedSc = Math.floor(c / SUB);
+    if (!freeMove) {
+      if (forcedSub && (clickedSr !== forcedSub.r || clickedSc !== forcedSub.c)) {
+        return false;
+      }
+    }
+    if (isCenter(r, c)) {
+      if (!canPlayCenter(clickedSr, clickedSc)) return false;
+    }
+    return true;
+  }
+
+  // 获取当前所有合法落子点
+  function getLegalMoves() {
+    const moves = [];
+    for (let r = 0; r < SIZE; r++) {
+      for (let c = 0; c < SIZE; c++) {
+        if (isLegalMove(r, c)) moves.push({ r, c });
+      }
+    }
+    return moves;
+  }
+
+  function canPlayCenter(sr, sc) {
+    if (freeMove) return true;
+    if (forcedSub) {
+      const fr = forcedSub.r, fc = forcedSub.c;
+      let emptyCount = 0, centerEmpty = false;
+      for (let r = fr * SUB; r < fr * SUB + SUB; r++) {
+        for (let c = fc * SUB; c < fc * SUB + SUB; c++) {
+          if (board[r][c] === null) {
+            emptyCount++;
+            if (isCenter(r, c)) centerEmpty = true;
+          }
+        }
+      }
+      if (emptyCount === 1 && centerEmpty) return true;
+    }
+    return false;
+  }
+
+  function computeNextTarget(lastR, lastC) {
+    const nextSr = lastR % SUB;
+    const nextSc = lastC % SUB;
+    const occupied = subOwner[nextSr][nextSc] !== null;
+    const full = subFull[nextSr][nextSc];
+    if (occupied || full) {
+      freeMove = true;
+      forcedSub = null;
+    } else {
+      freeMove = false;
+      forcedSub = { r: nextSr, c: nextSc };
+    }
+  }
+
+  /* ================= 快照与悔棋 ================= */
+  // 深拷贝当前状态（用于悔棋回退）
+  function snapshot() {
+    return {
+      board: board.map(row => row.slice()),
+      subOwner: subOwner.map(row => row.slice()),
+      subFull: subFull.map(row => row.slice()),
+      current,
+      forcedSub: forcedSub ? { ...forcedSub } : null,
+      freeMove,
+      firstMoveDone,
+      gameOver,
+      bigWinner,
+      bigWinLine: bigWinLine.map(x => ({ ...x })),
+      lastMove: lastMove ? { ...lastMove } : null
+    };
+  }
+
+  function restore(snap) {
+    board = snap.board.map(row => row.slice());
+    subOwner = snap.subOwner.map(row => row.slice());
+    subFull = snap.subFull.map(row => row.slice());
+    current = snap.current;
+    forcedSub = snap.forcedSub ? { ...snap.forcedSub } : null;
+    freeMove = snap.freeMove;
+    firstMoveDone = snap.firstMoveDone;
+    gameOver = snap.gameOver;
+    bigWinner = snap.bigWinner;
+    bigWinLine = snap.bigWinLine.map(x => ({ ...x }));
+    lastMove = snap.lastMove ? { ...snap.lastMove } : null;
+  }
+
+  function doUndo() {
+    if (aiThinking) return;
+    if (history.length === 0) return;
+
+    // 回退一步
+    const snap = history.pop();
+    restore(snap);
+
+    // 人机模式下，如果回退后轮到 AI 而历史里还有上一步（人类的步），
+    // 再回退一步，让局面回到"轮到人类"的干净状态
+    if (mode !== 'pvp') {
+      if (current === AI && history.length > 0) {
+        const snap2 = history.pop();
+        restore(snap2);
+      }
+    }
+
+    render();
+  }
+
+  /* ================= 核心落子逻辑 ================= */
+  function onCellClick(r, c) {
+    if (gameOver) return;
+    if (aiThinking) return;
+
+    // 人机模式下，非人类回合禁止点击
+    if (mode !== 'pvp' && current !== HUMAN) return;
+
+    if (!tryPlace(r, c)) return;
+    render();
+
+    // 人机模式下，落子后触发 AI
+    if (mode !== 'pvp' && !gameOver && current === AI) {
+      scheduleAI();
+    }
+  }
+
+  // 尝试落子（公共逻辑，人类与 AI 共用）；返回是否成功
+  function tryPlace(r, c) {
+    if (gameOver) return false;
+    if (board[r][c] !== null) return false;
+
+    // 先手限制
+    if (!firstMoveDone) {
+      const targetSr = Math.floor(r / SUB), targetSc = Math.floor(c / SUB);
+      const midSr = Math.floor(CENTER / SUB), midSc = Math.floor(CENTER / SUB);
+      if (targetSr !== midSr || targetSc !== midSc) return false;
+      if (isCenter(r, c)) return false;
+    }
+
+    // 强制落子区域判断
+    const clickedSr = Math.floor(r / SUB), clickedSc = Math.floor(c / SUB);
+    if (!freeMove) {
+      if (forcedSub && (clickedSr !== forcedSub.r || clickedSc !== forcedSub.c)) {
+        return false;
+      }
+    }
+
+    // 中心格封印判断
+    if (isCenter(r, c)) {
+      if (!canPlayCenter(clickedSr, clickedSc)) return false;
+    }
+
+    // 落子前快照（用于悔棋）
+    history.push(snapshot());
+
+    board[r][c] = current;
+    lastMove = { r, c };
+
+    const winLine = checkSubWin(clickedSr, clickedSc, current);
+    if (winLine) {
+      subOwner[clickedSr][clickedSc] = current;
+    } else if (isSubFull(clickedSr, clickedSc)) {
+      subFull[clickedSr][clickedSc] = true;
+    }
+
+    const big = checkBigWin();
+    if (big) {
+      bigWinner = big.winner;
+      bigWinLine = big.line;
+      gameOver = true;
+    } else if (allSubsEnded()) {
+      gameOver = true;
+    }
+
+    firstMoveDone = true;
+
+    if (!gameOver) {
+      computeNextTarget(r, c);
+      current = (current === 'X') ? 'O' : 'X';
+    }
+
+    return true;
+  }
+
+  /* ================= AI 决策 ================= */
+  function scheduleAI() {
+    aiThinking = true;
+    render(); // 显示"AI 思考中"
+    // 用 setTimeout 让界面先刷新，避免阻塞
+    setTimeout(() => {
+      const move = (mode === 'ai-hard') ? aiChooseHard() : aiChooseEasy();
+      aiThinking = false;
+      if (move) {
+        tryPlace(move.r, move.c);
+      }
+      render();
+    }, 250);
+  }
+
+  // 低级 AI：在所有合法位置随机选
+  function aiChooseEasy() {
+    const moves = getLegalMoves();
+    if (moves.length === 0) return null;
+    return moves[Math.floor(Math.random() * moves.length)];
+  }
+
+  // 高级 AI：启发式打分选择最优落子
+  function aiChooseHard() {
+    const moves = getLegalMoves();
+    if (moves.length === 0) return null;
+    if (moves.length === 1) return moves[0];
+
+    let best = null;
+    let bestScore = -Infinity;
+
+    for (const m of moves) {
+      let score = evaluateMove(m);
+      // 加入少量随机扰动，避免每次都走完全相同的棋
+      score += Math.random() * 0.5;
+      if (score > bestScore) {
+        bestScore = score;
+        best = m;
+      }
+    }
+    return best;
+  }
+
+  // 评估在某位置落子的价值（站在 AI 即 O 的视角）
+  function evaluateMove(m) {
+    let score = 0;
+    const sr = Math.floor(m.r / SUB), sc = Math.floor(m.c / SUB);
+
+    // 1) 中心格战略价值高（若能落）
+    if (isCenter(m.r, m.c)) score += 30;
+
+    // 2) 落子后能否立即占领该小盘（对 AI 极有利）
+    if (wouldWinSub(m, AI)) score += 100;
+
+    // 3) 落子后是否阻止对手立即占领该小盘（防御）
+    if (wouldWinSub(m, HUMAN)) score += 80;
+
+    // 4) 小盘内已有己方棋子数量（越多越好，增加控制）
+    score += countSubPieces(sr, sc, AI) * 6;
+
+    // 5) 小盘内对手棋子数量（越多越危险，抢占价值高）
+    score += countSubPieces(sr, sc, HUMAN) * 3;
+
+    // 6) 是否接近在该小盘成二连（形成威胁）
+    score += threatValue(sr, sc, AI) * 15;
+
+    // 7) 小盘在大盘上的战略位置（中心小盘 > 角 > 边）
+    score += bigBoardValue(sr, sc) * 5;
+
+    return score;
+  }
+
+  // 模拟：若在 m 落子，是否能让 p 在该小盘三连
+  function wouldWinSub(m, p) {
+    const sr = Math.floor(m.r / SUB), sc = Math.floor(m.c / SUB);
+    // 临时落子
+    board[m.r][m.c] = p;
+    const win = checkSubWin(sr, sc, p);
+    board[m.r][m.c] = null;
+    return win !== null;
+  }
+
+  // 统计小盘内某玩家已有棋子数
+  function countSubPieces(sr, sc, p) {
+    let n = 0;
+    for (let r = sr * SUB; r < sr * SUB + SUB; r++) {
+      for (let c = sc * SUB; c < sc * SUB + SUB; c++) {
+        if (board[r][c] === p) n++;
+      }
+    }
+    return n;
+  }
+
+  // 评估在某小盘内 p 形成的"威胁"（接近三连的程度）
+  function threatValue(sr, sc, p) {
+    const cellsArr = [];
+    for (let r = sr * SUB; r < sr * SUB + SUB; r++) {
+      for (let c = sc * SUB; c < sc * SUB + SUB; c++) {
+        cellsArr.push(board[r][c]);
+      }
+    }
+    const lines = [
+      [0,1,2],[3,4,5],[6,7,8],
+      [0,3,6],[1,4,7],[2,5,8],
+      [0,4,8],[2,4,6]
+    ];
+    let threat = 0;
+    for (const line of lines) {
+      let mine = 0, empty = 0;
+      for (const i of line) {
+        if (cellsArr[i] === p) mine++;
+        else if (cellsArr[i] === null) empty++;
+      }
+      // 已有两子且第三子为空 → 强威胁
+      if (mine === 2 && empty === 1) threat += 2;
+      else if (mine === 1 && empty === 2) threat += 1;
+    }
+    return threat;
+  }
+
+  // 小棋盘在大盘上的位置价值（中心 4，角 3，边 2）
+  function bigBoardValue(sr, sc) {
+    if (sr === 1 && sc === 1) return 4;
+    if ((sr === 0 || sr === 2) && (sc === 0 || sc === 2)) return 3;
+    return 2;
+  }
+
+  /* ================= 渲染 ================= */
+  function render() {
+    for (let r = 0; r < SIZE; r++) {
+      for (let c = 0; c < SIZE; c++) {
+        const el = cells[r][c];
+        const v = board[r][c];
+        el.textContent = '';
+        el.classList.remove('x', 'o', 'sealed', 'owned-done', 'in-target', 'big-win', 'last-move');
+
+        if (v) {
+          el.textContent = v;
+          el.classList.add(v.toLowerCase());
+        } else if (isCenter(r, c)) {
+          if (isCenterUnsealedNow()) {
+            // 解禁：正常空位
+          } else {
+            el.classList.add('sealed');
+            const span = document.createElement('span');
+            span.className = 'seal-label';
+            span.textContent = '封印';
+            el.appendChild(span);
+          }
+        }
+      }
+    }
+
+    // 最近一手高亮
+    if (lastMove) {
+      cells[lastMove.r][lastMove.c].classList.add('last-move');
+    }
+
+    // 强制落子区域高亮
+    if (!gameOver && !freeMove && forcedSub) {
+      const sr = forcedSub.r, sc = forcedSub.c;
+      for (let r = sr * SUB; r < sr * SUB + SUB; r++) {
+        for (let c = sc * SUB; c < sc * SUB + SUB; c++) {
+          if (board[r][c] === null) {
+            cells[r][c].classList.add('in-target');
+          }
+        }
+      }
+    }
+
+    // 大棋盘获胜高亮
+    if (bigWinner && bigWinLine.length) {
+      for (const { sr, sc } of bigWinLine) {
+        for (let r = sr * SUB; r < sr * SUB + SUB; r++) {
+          for (let c = sc * SUB; c < sc * SUB + SUB; c++) {
+            cells[r][c].classList.add('big-win');
+          }
+        }
+      }
+    }
+
+    // 状态面板
+    if (gameOver) {
+      updateTurnPanel('—', 'turn-x');
+      targetValue.textContent = '对局结束';
+      showResult();
+    } else if (aiThinking) {
+      updateTurnPanel(current, current === 'X' ? 'turn-x' : 'turn-o');
+      targetValue.textContent = 'AI 思考中…';
+    } else {
+      updateTurnPanel(current, current === 'X' ? 'turn-x' : 'turn-o');
+      if (freeMove) {
+        targetValue.textContent = '自由步（任意位置）';
+      } else if (forcedSub) {
+        targetValue.textContent = '第 ' + (forcedSub.r + 1) + ' 行 · 第 ' + (forcedSub.c + 1) + ' 列小盘';
+      } else {
+        targetValue.textContent = '—';
+      }
+    }
+
+    const { x, o } = countSubs();
+    scoreX.textContent = x;
+    scoreO.textContent = o;
+
+    // 悔棋按钮状态
+    undoBtn.disabled = (history.length === 0 || aiThinking);
+  }
+
+  function isCenterUnsealedNow() {
+    if (gameOver) return false;
+    if (board[CENTER][CENTER] !== null) return true;
+    if (freeMove) return true;
+    if (forcedSub) {
+      const fr = forcedSub.r, fc = forcedSub.c;
+      let emptyCount = 0, centerEmpty = false;
+      for (let r = fr * SUB; r < fr * SUB + SUB; r++) {
+        for (let c = fc * SUB; c < fc * SUB + SUB; c++) {
+          if (board[r][c] === null) {
+            emptyCount++;
+            if (isCenter(r, c)) centerEmpty = true;
+          }
+        }
+      }
+      if (emptyCount === 1 && centerEmpty) return true;
+    }
+    return false;
+  }
+
+  function updateTurnPanel(text, cls) {
+    turnValue.textContent = text;
+    turnCard.className = 'card ' + cls;
+  }
+
+  function showResult() {
+    let title;
+    if (bigWinner) {
+      title = '大棋盘三连！';
+      let who = (mode !== 'pvp')
+        ? (bigWinner === HUMAN ? '你（X）' : 'AI（O）')
+        : '玩家 ' + bigWinner;
+      targetValue.textContent = title;
+      alert(who + ' 达成大棋盘三连，获胜！');
+      return;
+    }
+    const { x, o } = countSubs();
+    const oFinal = o + 1;
+    let msg;
+    if (x > oFinal) msg = 'X 获胜（X ' + x + ' : O ' + oFinal + '）';
+    else if (x < oFinal) msg = 'O 获胜（X ' + x + ' : O ' + oFinal + '）';
+    else msg = '平局（X ' + x + ' : O ' + oFinal + '）';
+
+    if (mode !== 'pvp') {
+      const outcome = (x > oFinal) ? '你获胜！' : (x < oFinal ? 'AI 获胜' : '平局');
+      msg = outcome + '（X ' + x + ' : O ' + oFinal + '）';
+    }
+    targetValue.textContent = msg;
+    alert('对局结束，全部小盘已结束。\n' + msg);
+  }
+
+  /* ================= 重置与模式切换 ================= */
+  function reset() {
+    initState();
+    render();
+  }
+
+  function setMode(newMode) {
+    if (aiThinking) return;
+    mode = newMode;
+    // 更新按钮高亮
+    modeGroup.querySelectorAll('.mode-btn').forEach(btn => {
+      btn.classList.toggle('active', btn.dataset.mode === newMode);
+    });
+    reset();
+  }
+
+  /* ================= 事件绑定 ================= */
+  document.getElementById('resetBtn').addEventListener('click', reset);
+  undoBtn.addEventListener('click', doUndo);
+  modeGroup.querySelectorAll('.mode-btn').forEach(btn => {
+    btn.addEventListener('click', () => setMode(btn.dataset.mode));
+  });
+
+  /* ================= 启动 ================= */
+  initState();
+  buildBoard();
+  render();
+})();
+</script>
+</body>
+</html>
