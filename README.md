@@ -17,6 +17,10 @@
 
 或任意静态服务器（如 `python -m http.server`）托管后访问。
 
+## 运行截图
+
+![游戏运行截图](screenshot.png)
+
 ## 游戏规则
 
 在经典 9×9 超级井字棋的基础上，做了以下设计与平衡性改良：
@@ -76,6 +80,7 @@
 ```
 .
 ├── ultimate-tic-tac-toe.html   # 游戏主文件（含全部 HTML/CSS/JS）
+├── screenshot.png              # 游戏运行截图
 └── README.md                   # 本说明文档
 ```
 
